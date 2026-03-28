@@ -40,12 +40,22 @@ MAX_RETRIES = 3
 RETRY_DELAYS = [2, 4, 8]
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
+FEW_SHOT_EXAMPLES = r"""
+EXAMPLE (discharge summary style — mirror this structure):
+Input expanded_text contains: "Discharge diagnosis: CAP J18.9. k/c/o T2DM E11.9, HTN I10, CKD N18.3. No h/o TB."
+Output diagnoses must include J18.9, E11.9, I10, N18.3; TB must be negated=true if listed as "No h/o TB".
+Billed codes on slip only: ["J18.9"].
+Medication line "Tab Glycomet 500mg" → generic_name Metformin; "Mox 500" → Amoxicillin.
+"""
+
 EXTRACTION_SYSTEM_PROMPT = (
     "You are a clinical NLP engine specialized in Indian hospital documents. "
     "The input has already been pre-processed by spaCy and includes expanded_text, "
     "section_map, and negated_spans.\n"
     "Use section context to infer intent (complaint/history/diagnosis).\n"
     "Any diagnosis matching negated_spans must have negated=true.\n"
+    "Family history is NOT a patient diagnosis — omit from diagnoses[].\n"
+    f"{FEW_SHOT_EXAMPLES}\n"
     "Use this drug brand-to-generic hint map:\n"
     f"{json.dumps(DRUG_MAP, ensure_ascii=False)}\n\n"
     "Return ONLY valid JSON with keys: patient, encounter, diagnoses, procedures, "

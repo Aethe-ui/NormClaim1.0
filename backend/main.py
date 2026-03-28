@@ -69,7 +69,7 @@ app.include_router(validate_router)
 
 # ── Supabase Client Setup ────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
 
 supabase: Optional[Client] = None
 if not SUPABASE_URL or not SUPABASE_KEY:
