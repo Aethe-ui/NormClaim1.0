@@ -6,6 +6,7 @@ Stores extraction quality feedback for model/prompt improvement loops.
 from typing import Dict, List, Optional
 
 from models.schemas import FeedbackItem
+from services.persistence_service import insert_feedback
 
 # In-memory fallback cache for local development.
 FEEDBACK: Dict[str, List[FeedbackItem]] = {}
@@ -16,14 +17,7 @@ def save_feedback(item: FeedbackItem, supabase_client: Optional[object] = None) 
     FEEDBACK.setdefault(item.document_id, []).append(item)
 
     if supabase_client is not None:
-        supabase_client.table("feedback").insert(
-            {
-                "document_id": item.document_id,
-                "was_correct": item.was_extraction_correct,
-                "correction_type": item.correction_type,
-                "details": item.details,
-            }
-        ).execute()
+        insert_feedback(item, supabase_client)
 
     return item
 

@@ -90,6 +90,56 @@ def apply_negation_override(result: Dict, negated_spans: List[str]) -> Dict:
     return result
 
 
+def normalize_medications(result: Dict) -> Dict:
+    """Normalize medication fields and infer generic names using DRUG_MAP."""
+    normalized = []
+    reverse_map = {str(k).strip().lower(): str(v).strip() for k, v in DRUG_MAP.items()}
+
+    for item in result.get("medications", []):
+        med = dict(item)
+        brand = str(med.get("brand_name") or med.get("name") or "").strip()
+        generic = str(med.get("generic_name") or "").strip()
+
+        if not generic and brand:
+            generic = reverse_map.get(brand.lower(), "")
+
+        if brand and not med.get("brand_name"):
+            med["brand_name"] = brand
+        if generic and not med.get("generic_name"):
+            med["generic_name"] = generic
+        if not med.get("name"):
+            med["name"] = generic or brand or None
+
+        normalized.append(med)
+
+    result["medications"] = normalized
+    return result
+
+
+def filter_low_confidence(result: Dict, threshold: float = 0.60) -> Dict:
+    """Filter out diagnosis entries below confidence threshold and record flags."""
+    flags = list(result.get("low_confidence_flags", []))
+    kept = []
+
+    for d in result.get("diagnoses", []):
+        confidence = d.get("confidence")
+        try:
+            conf = float(confidence)
+        except (TypeError, ValueError):
+            conf = 1.0
+
+        if conf < threshold:
+            code = d.get("icd10_code") or "unknown"
+            text = d.get("text") or "unknown"
+            flags.append(f"filtered_low_confidence:{code}:{text}:{conf:.2f}")
+            continue
+        kept.append(d)
+
+    result["diagnoses"] = kept
+    result["low_confidence_flags"] = flags
+    return result
+
+
 def _parse_json(raw: str) -> Dict:
     cleaned = re.sub(r"```json|```", "", raw).strip()
     try:
@@ -145,6 +195,8 @@ def extract_from_document(file_bytes: bytes, document_id: str) -> ExtractionResu
     data = _call_gemini_with_retry(model, prompt_text)
     data = apply_negation_override(data, spacy_result["negated_spans"])
     data["diagnoses"] = validate_icd10_codes(data.get("diagnoses", []))
+    data = normalize_medications(data)
+    data = filter_low_confidence(data)
 
     medications = []
     for m in data.get("medications", []):

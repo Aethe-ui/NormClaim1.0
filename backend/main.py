@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from supabase import create_client, Client
+from services.persistence_service import verify_supabase_database
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
@@ -72,11 +73,25 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
 
 supabase: Optional[Client] = None
+supabase_db_status = {
+    "connected": False,
+    "missing_tables": [],
+    "ok": False,
+}
 if not SUPABASE_URL or not SUPABASE_KEY:
     logger.warning("Supabase credentials not set. Running with in-memory fallback for uploads/listing.")
 else:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     logger.info("✓  Supabase client initialized successfully")
+    try:
+        supabase_db_status = verify_supabase_database(supabase)
+        if supabase_db_status["ok"]:
+            logger.info("✓  Supabase database connectivity verified and required tables are present")
+        else:
+            missing = ", ".join(supabase_db_status.get("missing_tables", [])) or "unknown"
+            logger.warning("⚠  Supabase connected but missing required tables: %s", missing)
+    except Exception as e:
+        logger.warning("⚠  Supabase verification failed: %s", e)
 
 # ── Health check ──────────────────────────────────────────────────────────
 @app.get("/health", tags=["System"])
@@ -90,6 +105,9 @@ async def health():
         "version": "1.0.0",
         "gemini_api_key_configured": gemini_configured,
         "supabase_configured": supabase_configured,
+        "supabase_connected": bool(supabase_db_status.get("connected")),
+        "supabase_db_ready": bool(supabase_db_status.get("ok")),
+        "supabase_missing_tables": supabase_db_status.get("missing_tables", []),
     }
 
 
@@ -111,6 +129,8 @@ async def startup_event():
 
     fhir_url = os.environ.get("FHIR_SERVICE_URL", "http://localhost:8001/fhir/bundle")
     logger.info(f"✓  FHIR service URL: {fhir_url}")
+    if supabase is not None and not supabase_db_status.get("ok"):
+        logger.warning("⚠  Supabase database is not fully ready. Check missing tables in /health response.")
     logger.info("✓  API docs available at: http://localhost:8000/docs")
     logger.info("=" * 60)
 

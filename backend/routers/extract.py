@@ -3,15 +3,27 @@ NormClaim — Extract Router
 Handles AI extraction of clinical entities from uploaded documents.
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 from models.schemas import ExtractionResult
 from services.extractor import extract_from_document
+from services.persistence_service import insert_extraction
 from routers.documents import DOCUMENTS
 
 router = APIRouter(prefix="/api/extract", tags=["Extraction"])
+logger = logging.getLogger(__name__)
 
 # In-memory extraction results store
 EXTRACTIONS: dict = {}
+
+
+def _get_supabase_client():
+    try:
+        from main import supabase
+        return supabase
+    except Exception:
+        return None
 
 
 @router.post("/{document_id}", response_model=ExtractionResult)
@@ -30,6 +42,10 @@ async def extract_document(document_id: str):
         raise HTTPException(status_code=500, detail=f"Extraction error: {str(e)}")
 
     EXTRACTIONS[document_id] = extraction_result
+    try:
+        insert_extraction(document_id, extraction_result, _get_supabase_client())
+    except Exception as e:
+        logger.warning("Extraction persistence failed for %s: %s", document_id, e)
     return extraction_result
 
 

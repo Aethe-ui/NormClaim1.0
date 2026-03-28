@@ -150,3 +150,23 @@ def build_fhir_bundle_local(extraction: ExtractionResult) -> Dict[str, Any]:
         "type": "collection",
         "entry": entries,
     }
+
+
+def validate_fhir_bundle(bundle: Dict[str, Any]) -> bool:
+    """Run lightweight structural validation for generated FHIR Bundle payloads."""
+    if not isinstance(bundle, dict):
+        return False
+    if bundle.get("resourceType") != "Bundle":
+        return False
+    entry = bundle.get("entry")
+    if not isinstance(entry, list):
+        return False
+    for item in entry:
+        if not isinstance(item, dict):
+            return False
+        resource = item.get("resource")
+        if not isinstance(resource, dict):
+            return False
+        if not resource.get("resourceType"):
+            return False
+    return True
